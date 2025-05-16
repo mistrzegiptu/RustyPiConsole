@@ -11,7 +11,9 @@
 extern crate panic_halt;
 extern crate embedded_hal;
 extern crate rp2040_hal;
+extern crate pcd8544;
 
+use core::fmt::Write;
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
 use panic_halt as _;
@@ -25,6 +27,7 @@ use hal::pac;
 
 // Some traits we need
 use embedded_hal::digital::v2::OutputPin;
+use pcd8544::PCD8544;
 use rp2040_hal::clocks::Clock;
 
 /// The linker will place this boot block at the start of our program image. We
@@ -81,13 +84,35 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // Configure GPIO25 as an output
-    let mut led_pin = pins.gpio25.into_push_pull_output();
+    let mut pcd_gnd   = pins.gpio0.into_push_pull_output();
+    let mut pcd_light = pins.gpio28.into_push_pull_output();
+    let mut pcd_vcc   = pins.gpio1.into_push_pull_output();
+    let mut pcd_clk   = pins.gpio18.into_push_pull_output();
+    let mut pcd_din   = pins.gpio19.into_push_pull_output();
+    let mut pcd_dc    = pins.gpio20.into_push_pull_output();
+    let mut pcd_ce    = pins.gpio17.into_push_pull_output();
+    let mut pcd_rst   = pins.gpio21.into_push_pull_output();
+
+
+    pcd_gnd.set_low();
+    pcd_light.set_low();
+    pcd_vcc.set_high();
+
+    let mut display = PCD8544::new(
+        pcd_clk,
+        pcd_din,
+        pcd_dc,
+        pcd_ce,
+        pcd_rst,
+        pcd_light,
+    ).expect("Infallible cannot fail");
+
+    display.reset().expect("Infallible cannot fail");
+    //writeln!(display, "Hello World");
+    display.write_str("Hello world");
+
     loop {
-        led_pin.set_high().unwrap();
-        delay.delay_ms(500);
-        led_pin.set_low().unwrap();
-        delay.delay_ms(500);
+
     }
 }
 
