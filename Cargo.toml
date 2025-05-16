@@ -11,11 +11,14 @@ runner = "probe-run --chip RP2040"
 rp2040-hal = "0.7.0"
 panic-halt = "0.2.0"
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
-cortex-m = "0.7.2"
+cortex-m = "0.7.3"
 cortex-m-rt = "0.7"
 rp2040-boot2 = "0.2.1"
-st7735-lcd = "0.10.0"
+st7735-lcd = "0.8.0"
 pcd8544 = "0.2.0"
+embedded-time = "0.12.0"
+embedded-graphics = "0.7.0"
+fugit = "0.3"
 
 
 [[bin]]

@@ -11,8 +11,13 @@
 extern crate panic_halt;
 extern crate embedded_hal;
 extern crate rp2040_hal;
-extern crate pcd8544;
+extern crate embedded_graphics;
+extern crate embedded_time;
+extern crate cortex_m_rt;
+extern crate st7735_lcd;
+extern crate fugit;
 
+use cortex_m_rt::entry;
 use core::fmt::Write;
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
@@ -27,8 +32,20 @@ use hal::pac;
 
 // Some traits we need
 use embedded_hal::digital::v2::OutputPin;
-use pcd8544::PCD8544;
 use rp2040_hal::clocks::Clock;
+
+use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
+use embedded_graphics::prelude::*;
+use embedded_graphics::pixelcolor::Rgb565;
+use embedded_time::fixed_point::FixedPoint;
+use embedded_time::rate::Extensions;
+use rp2040_hal::spi;
+//use st7735_lcd;
+use st7735_lcd::Orientation;
+use embedded_graphics::prelude::*;
+use embedded_graphics::draw_target::DrawTarget;
+use fugit::RateExtU32;
+
 
 /// The linker will place this boot block at the start of our program image. We
 /// need this to help the ROM bootloader get our code up and running.
@@ -84,32 +101,38 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    let mut pcd_gnd   = pins.gpio0.into_push_pull_output();
-    let mut pcd_light = pins.gpio28.into_push_pull_output();
-    let mut pcd_vcc   = pins.gpio1.into_push_pull_output();
-    let mut pcd_clk   = pins.gpio18.into_push_pull_output();
-    let mut pcd_din   = pins.gpio19.into_push_pull_output();
-    let mut pcd_dc    = pins.gpio20.into_push_pull_output();
-    let mut pcd_ce    = pins.gpio17.into_push_pull_output();
-    let mut pcd_rst   = pins.gpio21.into_push_pull_output();
+    let _spi_sclk = pins.gpio6.into_mode::<hal::gpio::FunctionSpi>();
+    let _spi_mosi = pins.gpio7.into_mode::<hal::gpio::FunctionSpi>();
+    let _spi_miso = pins.gpio4.into_mode::<hal::gpio::FunctionSpi>();
+    let spi = hal::Spi::<_, _, 8>::new(pac.SPI0);
+    let mut lcd_led = pins.gpio12.into_push_pull_output();
+    let dc = pins.gpio13.into_push_pull_output();
+    let rst = pins.gpio14.into_push_pull_output();
 
+    let spi = spi.init(
+        &mut pac.RESETS,
+        clocks.peripheral_clock.freq(),
+        RateExtU32::Hz(16_000_000u32),
+        &embedded_hal::spi::MODE_0,
+    );
 
-    pcd_gnd.set_low();
-    pcd_light.set_low();
-    pcd_vcc.set_high();
+    let mut disp = st7735_lcd::ST7735::new(spi, dc, rst, true, false, 160, 128);
 
-    let mut display = PCD8544::new(
-        pcd_clk,
-        pcd_din,
-        pcd_dc,
-        pcd_ce,
-        pcd_rst,
-        pcd_light,
-    ).expect("Infallible cannot fail");
+    disp.init(&mut delay).unwrap();
+    disp.set_orientation(&Orientation::Landscape).unwrap();
+    disp.clear(Rgb565::BLACK).unwrap();
+    disp.set_offset(0, 25);
 
-    display.reset().expect("Infallible cannot fail");
-    //writeln!(display, "Hello World");
-    display.write_str("Hello world");
+    let image_raw: ImageRawLE<Rgb565> =
+        ImageRaw::new(include_bytes!("ferris.raw"), 86);
+
+    let image: Image<_> = Image::new(&image_raw, Point::new(34, 8));
+
+    image.draw(&mut disp).unwrap();
+
+    // Wait until the background and image have been rendered otherwise
+    // the screen will show random pixels for a brief moment
+    lcd_led.set_high().unwrap();
 
     loop {
 
