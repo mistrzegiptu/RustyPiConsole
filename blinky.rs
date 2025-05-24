@@ -9,7 +9,7 @@
 #![no_std]
 #![no_main]
 
-mod pong;
+//mod pong;
 
 extern crate panic_halt;
 extern crate embedded_hal;
