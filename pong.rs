@@ -1,3 +1,4 @@
+const PLAYER_SIZE: i16 = 2;
 pub enum PongDirection {
     UpperRight,
     LowerRight,
@@ -11,6 +12,8 @@ pub struct Point {
 }
 
 pub struct Pong {
+    pub width: i16,
+    pub height: i16,
     pub ball: Point,
     pub ball_direction: PongDirection,
     pub player1: i16,
@@ -22,6 +25,8 @@ pub struct Pong {
 impl Pong {
     pub fn new(width: i16, height: i16) -> Self {
         let mut pong = Pong{
+            width,
+            height,
             ball: Point {x: width / 2, y: height / 2},
             ball_direction: PongDirection::UpperRight,
             player1: height / 2,
@@ -75,9 +80,20 @@ impl Pong {
     }
 
     pub fn check_for_collision(mut self) {
-        if self.ball.y == 0 || self.ball.y == height {
+        if self.ball.y == 0 || self.ball.y == self.height {
             self.change_at_wall();
             self.move_ball();
+        }
+        else if (self.ball.x == 0 && i16::abs(self.ball.y - self.player1) <= PLAYER_SIZE) ||
+                (self.ball.x == self.width && i16::abs(self.ball.y - self.player2) <= PLAYER_SIZE){
+
+            self.change_at_player();
+        }
+        else if self.ball.x == 0 && i16::abs(self.ball.y - self.player1) > PLAYER_SIZE {
+            //P2 SCORED
+        }
+        else if self.ball.x == self.width && i16::abs(self.ball.y - self.player2) > PLAYER_SIZE {
+            //P1 SCORED
         }
     }
 }
