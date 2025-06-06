@@ -9,7 +9,7 @@
 #![no_std]
 #![no_main]
 
-//mod pong;
+mod pong;
 
 extern crate panic_halt;
 extern crate embedded_hal;
@@ -19,9 +19,12 @@ extern crate embedded_time;
 extern crate cortex_m_rt;
 extern crate st7735_lcd;
 extern crate fugit;
+extern crate cortex_m;
 
 use cortex_m_rt::entry;
 use core::fmt::Write;
+use core::pin::Pin;
+use cortex_m::interrupt::disable;
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
 use panic_halt as _;
@@ -32,6 +35,7 @@ use rp2040_hal as hal;
 // A shorter alias for the Peripheral Access Crate, which provides low-level
 // register access
 use hal::pac;
+use embedded_hal::adc::OneShot;
 
 // Some traits we need
 use embedded_hal::digital::v2::OutputPin;
@@ -41,14 +45,19 @@ use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
 use embedded_graphics::prelude::*;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_time::fixed_point::FixedPoint;
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use embedded_graphics::geometry::Size;
 use embedded_time::rate::Extensions;
-use rp2040_hal::spi;
+use embedded_graphics::mono_font::ascii::FONT_6X10;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::text::Text;
+use rp2040_hal::{spi, Adc};
 //use st7735_lcd;
 use st7735_lcd::Orientation;
 use embedded_graphics::prelude::*;
 use embedded_graphics::draw_target::DrawTarget;
 use fugit::RateExtU32;
-
+use pong::{PlayerTurn, Pong, PLAYER_SIZE};
 
 /// The linker will place this boot block at the start of our program image. We
 /// need this to help the ROM bootloader get our code up and running.
@@ -62,15 +71,19 @@ pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 /// if your board has a different frequency
 const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
-/// Entry point to our bare-metal application.
-///
 /// The `#[rp2040_hal::entry]` macro ensures the Cortex-M start-up code calls this function
 /// as soon as all global variables and the spinlock are initialised.
-///
-/// The function configures the RP2040 peripherals, then toggles a GPIO pin in
-/// an infinite loop. If there is an LED connected to that pin, it will blink.
+
+static mut ADC: Option<Adc> = None;
+static mut MUX_SELECT_0: Option<hal::gpio::Pin<hal::gpio::bank0::Gpio10, hal::gpio::PushPullOutput>> = None;
+static mut MUX_SELECT_1: Option<hal::gpio::Pin<hal::gpio::bank0::Gpio11, hal::gpio::PushPullOutput>> = None;
+static mut MUX_JOY_ADC: Option<hal::gpio::Pin<hal::gpio::bank0::Gpio26, hal::gpio::FloatingInput>> = None;
+const JOY_MAX_VAL: u16 = 4095;
+const JOY_UPPER_BOUND: u16 = 3071; // 3/4 of JOY_MAX_VALUE
+const JOY_LOWER_BOUND: u16 = 1024; // 1/4 of JOY_MAX_VALUE
+
 #[rp2040_hal::entry]
-fn main() -> ! {
+unsafe fn main() -> ! {
     // Grab our singleton objects
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
@@ -103,7 +116,12 @@ fn main() -> ! {
         sio.gpio_bank0,
         &mut pac.RESETS,
     );
-
+    //adc pin for joysticks, since pico has only 3 adc we need to use muxer
+    ADC = Some(hal::Adc::new(pac.ADC, &mut pac.RESETS));
+    MUX_SELECT_0 = Some(pins.gpio10.into_push_pull_output());
+    MUX_SELECT_1 = Some(pins.gpio11.into_push_pull_output());
+    MUX_JOY_ADC = Some(pins.gpio26.into_floating_input());
+    //lcd pins, spi communication, reset and light pins
     let _spi_sclk = pins.gpio6.into_mode::<hal::gpio::FunctionSpi>();
     let _spi_mosi = pins.gpio7.into_mode::<hal::gpio::FunctionSpi>();
     let _spi_miso = pins.gpio4.into_mode::<hal::gpio::FunctionSpi>();
@@ -133,13 +151,201 @@ fn main() -> ! {
 
     image.draw(&mut disp).unwrap();
 
+    //let mut current_state: CurrentState = CurrentState::Pong(Pong::new(160, 128));
+    let mut menu_change: bool = true;
+    let mut current_state: CurrentState = CurrentState::Menu;
+    loop {
+        match current_state {
+            CurrentState::Menu => {
+                disp.clear(Rgb565::BLACK).unwrap();
+
+                let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+                Text::new("Select Game", Point::new(40, 20), style)
+                    .draw(&mut disp)
+                    .unwrap();
+                Text::new("> Pong", Point::new(40, 50), style)
+                    .draw(&mut disp)
+                    .unwrap();
+                Text::new("  Snake", Point::new(40, 70), style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                let mut selected_game = 0;
+                loop {
+                    let joy_val = read_joy(JoyToPin::JoyY1);
+                    if joy_val > JOY_UPPER_BOUND {
+                        menu_change = true;
+                        selected_game = 1;
+                    } else if joy_val < JOY_LOWER_BOUND {
+                        menu_change = true;
+                        selected_game = 0;
+                    }
+                    if menu_change {
+                        disp.clear(Rgb565::BLACK).unwrap();
+                        Text::new("Select Game", Point::new(40, 20), style)
+                            .draw(&mut disp)
+                            .unwrap();
+
+                        let mut buf = itoa::Buffer::new();
+                        let formatted = buf.format(joy_val);
+
+                        Text::new(formatted, Point::new(40, 90), style)
+                            .draw(&mut disp)
+                            .unwrap();
+
+                        if selected_game == 0 {
+                            Text::new("> Pong", Point::new(40, 50), style)
+                                .draw(&mut disp)
+                                .unwrap();
+                            Text::new("  Snake", Point::new(40, 70), style)
+                                .draw(&mut disp)
+                                .unwrap();
+                        } else {
+                            Text::new("  Pong", Point::new(40, 50), style)
+                                .draw(&mut disp)
+                                .unwrap();
+                            Text::new("> Snake", Point::new(40, 70), style)
+                                .draw(&mut disp)
+                                .unwrap();
+                        }
+                        menu_change = false;
+                    }
+                    let confirm_val = read_joy(JoyToPin::JoyX1);
+                    if confirm_val > JOY_UPPER_BOUND {
+                        if selected_game == 0 {
+                            current_state = CurrentState::Pong(Pong::new(160, 128));
+                        } else {
+                            current_state = CurrentState::Snake;
+                        }
+                        break;
+                    }
+
+                    delay.delay_ms(10);
+                }
+            }
+
+            CurrentState::Pong(ref mut pong) => {
+                let paddle_style = PrimitiveStyle::with_fill(Rgb565::WHITE);
+                let ball_style = PrimitiveStyle::with_fill(Rgb565::GREEN);
+
+                disp.clear(Rgb565::BLACK).unwrap();
+
+                Rectangle::new(
+                    Point::new(0, pong.player1 as i32 - PLAYER_SIZE as i32),
+                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                )
+                    .into_styled(paddle_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                Rectangle::new(
+                    Point::new(pong.width as i32 - 2, pong.player2 as i32 - PLAYER_SIZE as i32),
+                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                )
+                    .into_styled(paddle_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                Rectangle::new(
+                    Point::new(pong.ball.x as i32, pong.ball.y as i32),
+                    Size::new(2, 2),
+                )
+                    .into_styled(ball_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                let p1_val = read_joy(JoyToPin::JoyY1);
+                let p2_val = read_joy(JoyToPin::JoyY2);
+
+                pong.move_player(PlayerTurn::Player1, p1_val as i16);
+                pong.move_player(PlayerTurn::Player2, p2_val as i16);
+
+                pong.move_ball();
+                pong.check_for_collision();
+                pong.check_for_win();
+
+                if !pong.is_running {
+                    current_state = CurrentState::Menu;
+                }
+
+                //delay.delay_ms(1);
+            }
+
+            CurrentState::Snake => {
+                //TODO
+            }
+        }
+    }
+
+
     // Wait until the background and image have been rendered otherwise
     // the screen will show random pixels for a brief moment
-    lcd_led.set_high().unwrap();
-
+    /*lcd_led.set_high().unwrap();
+    let style = PrimitiveStyle::with_fill(Rgb565::BLACK);
+    let mut last_pos = Point::new(0, 0);
     loop {
+        Rectangle::new(last_pos, Size::new(160, 128))
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
+            .draw(&mut disp)
+            .unwrap();
+        let joy_val: u16 = adc.read(&mut adc_pin_0).unwrap();
+        let mut pos = Point::new(last_pos.x, last_pos.y);
+        if joy_val > 700 {
+            pos = Point::new(last_pos.x + 5, last_pos.y);
+        } else if joy_val < 300 {
+            pos = Point::new(last_pos.x - 5, last_pos.y);
+        }
+        last_pos = pos;
 
-    }
+        // Draw new green "dot"
+        Rectangle::new(pos, Size::new(6, 6))
+            .into_styled(style)
+            .draw(&mut disp)
+            .unwrap();
+    }*/
 }
 
-// End of file
+pub enum CurrentState {
+    Menu,
+    Pong(Pong),
+    Snake
+}
+
+pub enum JoyToPin {
+    JoyX1 = 0,
+    JoyY1 = 1,
+    JoyX2 = 2,
+    JoyY2
+}
+
+fn read_joy(joy: JoyToPin) -> u16 {
+    let (s0, s1) = match joy {
+        JoyToPin::JoyX1 => (false, false),
+        JoyToPin::JoyY1 => (true, false),
+        JoyToPin::JoyX2 => (false, true),
+        JoyToPin::JoyY2 => (true, true),
+    };
+
+    unsafe {
+        let adc = ADC.as_mut().unwrap();
+        let mux_joy_adc = MUX_JOY_ADC.as_mut().unwrap();
+        let mux_select_0 = MUX_SELECT_0.as_mut().unwrap();
+        let mux_select_1 = MUX_SELECT_1.as_mut().unwrap();
+
+        if s0 {
+            mux_select_0.set_high().unwrap();
+        } else {
+            mux_select_0.set_low().unwrap();
+        }
+
+        if s1 {
+            mux_select_1.set_high().unwrap();
+        } else {
+            mux_select_1.set_low().unwrap();
+        }
+
+        cortex_m::asm::delay(1000);
+
+        adc.read(mux_joy_adc).unwrap_or(0)
+    }
+}
