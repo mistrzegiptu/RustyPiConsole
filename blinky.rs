@@ -41,7 +41,6 @@ use embedded_hal::adc::OneShot;
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::clocks::Clock;
 
-use embedded_graphics::image::{Image, ImageRaw, ImageRawLE};
 use embedded_graphics::prelude::*;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_time::fixed_point::FixedPoint;
@@ -142,16 +141,8 @@ unsafe fn main() -> ! {
     disp.init(&mut delay).unwrap();
     disp.set_orientation(&Orientation::Landscape).unwrap();
     disp.clear(Rgb565::BLACK).unwrap();
-    disp.set_offset(0, 25);
+    //disp.set_offset(0, 25);
 
-    let image_raw: ImageRawLE<Rgb565> =
-        ImageRaw::new(include_bytes!("ferris.raw"), 86);
-
-    let image: Image<_> = Image::new(&image_raw, Point::new(34, 8));
-
-    image.draw(&mut disp).unwrap();
-
-    //let mut current_state: CurrentState = CurrentState::Pong(Pong::new(160, 128));
     let mut menu_change: bool = true;
     let mut current_state: CurrentState = CurrentState::Menu;
     loop {
@@ -226,7 +217,7 @@ unsafe fn main() -> ! {
 
             CurrentState::Pong(ref mut pong) => {
                 let paddle_style = PrimitiveStyle::with_fill(Rgb565::WHITE);
-                let ball_style = PrimitiveStyle::with_fill(Rgb565::GREEN);
+                let ball_style = PrimitiveStyle::with_fill(Rgb565::RED);
 
                 disp.clear(Rgb565::BLACK).unwrap();
 
@@ -254,14 +245,27 @@ unsafe fn main() -> ! {
                     .draw(&mut disp)
                     .unwrap();
 
+                let mut buf1 = itoa::Buffer::new();
+                let mut buf2 = itoa::Buffer::new();
+                let p1_score = buf1.format(pong.player1_score);
+                let p2_score = buf2.format(pong.player2_score);
+
+                let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+                Text::new(p1_score, Point::new(20, 20), style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                Text::new(p2_score, Point::new(40, 20), style)
+                    .draw(&mut disp)
+                    .unwrap();
+
                 let p1_val = read_joy(JoyToPin::JoyY1);
                 let p2_val = read_joy(JoyToPin::JoyY2);
 
                 pong.move_player(PlayerTurn::Player1, p1_val as i16);
                 pong.move_player(PlayerTurn::Player2, p2_val as i16);
 
-                pong.move_ball();
-                pong.check_for_collision();
+                pong.update_ball();
                 pong.check_for_win();
 
                 if !pong.is_running {
@@ -276,33 +280,6 @@ unsafe fn main() -> ! {
             }
         }
     }
-
-
-    // Wait until the background and image have been rendered otherwise
-    // the screen will show random pixels for a brief moment
-    /*lcd_led.set_high().unwrap();
-    let style = PrimitiveStyle::with_fill(Rgb565::BLACK);
-    let mut last_pos = Point::new(0, 0);
-    loop {
-        Rectangle::new(last_pos, Size::new(160, 128))
-            .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
-            .draw(&mut disp)
-            .unwrap();
-        let joy_val: u16 = adc.read(&mut adc_pin_0).unwrap();
-        let mut pos = Point::new(last_pos.x, last_pos.y);
-        if joy_val > 700 {
-            pos = Point::new(last_pos.x + 5, last_pos.y);
-        } else if joy_val < 300 {
-            pos = Point::new(last_pos.x - 5, last_pos.y);
-        }
-        last_pos = pos;
-
-        // Draw new green "dot"
-        Rectangle::new(pos, Size::new(6, 6))
-            .into_styled(style)
-            .draw(&mut disp)
-            .unwrap();
-    }*/
 }
 
 pub enum CurrentState {
@@ -315,7 +292,7 @@ pub enum JoyToPin {
     JoyX1 = 0,
     JoyY1 = 1,
     JoyX2 = 2,
-    JoyY2
+    JoyY2 = 3
 }
 
 fn read_joy(joy: JoyToPin) -> u16 {
@@ -344,7 +321,7 @@ fn read_joy(joy: JoyToPin) -> u16 {
             mux_select_1.set_low().unwrap();
         }
 
-        cortex_m::asm::delay(1000);
+        cortex_m::asm::delay(10000);
 
         adc.read(mux_joy_adc).unwrap_or(0)
     }

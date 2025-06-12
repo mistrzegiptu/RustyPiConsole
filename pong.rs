@@ -1,6 +1,6 @@
 use ::{JOY_LOWER_BOUND, JOY_UPPER_BOUND};
 
-pub const PLAYER_SIZE: i16 = 2;
+pub const PLAYER_SIZE: i16 = 4;
 const MAX_SCORE: u8 = 11;
 
 pub enum PongDirection {
@@ -82,38 +82,15 @@ impl Pong {
         };
     }
 
-    pub fn move_ball(&mut self) {
-        self.ball = match self.ball_direction {
-            PongDirection::UpperRight => Point{x: self.ball.x+1, y: self.ball.y+1},
-            PongDirection::LowerRight => Point{x: self.ball.x+1, y: self.ball.y-1},
-            PongDirection::LowerLeft => Point{x: self.ball.x-1, y: self.ball.y-1},
-            PongDirection::UpperLeft => Point{x: self.ball.x-1, y: self.ball.y+1},
-        };
-    }
-
     pub fn move_player(&mut self, which_player: PlayerTurn, value: i16) {
         let dy = if value > JOY_UPPER_BOUND as i16 { 1 } else if value < JOY_LOWER_BOUND as i16 { -1 } else { 0 };
 
         match which_player {
             PlayerTurn::Player1 => {
-                self.player1 += dy;
-
-                if self.player1 == (0 + PLAYER_SIZE - 1){
-                    self.player1 = PLAYER_SIZE
-                }
-                else if self.player1 == (self.height - PLAYER_SIZE + 1) {
-                    self.player1 = self.height - PLAYER_SIZE
-                }
+                self.player1 = (self.player1 + dy).clamp(PLAYER_SIZE, self.height - PLAYER_SIZE);
             }
             PlayerTurn::Player2 => {
-                self.player2 += dy;
-
-                if self.player1 == (0 + PLAYER_SIZE - 1){
-                    self.player1 = PLAYER_SIZE
-                }
-                else if self.player1 == (self.height - PLAYER_SIZE + 1) {
-                    self.player1 = self.height - PLAYER_SIZE
-                }
+                self.player2 = (self.player2 + dy).clamp(PLAYER_SIZE, self.height - PLAYER_SIZE);
             }
         }
     }
@@ -131,20 +108,39 @@ impl Pong {
         }
     }
 
-    pub fn check_for_collision(&mut self) {
-        if self.ball.y == 0 || self.ball.y == self.height {
+    pub fn spawn_ball(&mut self) {
+        Self::random_direction();
+        self.ball = Point { x: self.width / 2, y: self.height / 2 };
+    }
+
+    pub fn update_ball(&mut self) {
+        let (next_x, next_y) = match self.ball_direction {
+            PongDirection::UpperRight => (self.ball.x + 1, self.ball.y + 1),
+            PongDirection::LowerRight => (self.ball.x + 1, self.ball.y - 1),
+            PongDirection::LowerLeft => (self.ball.x - 1, self.ball.y - 1),
+            PongDirection::UpperLeft => (self.ball.x - 1, self.ball.y + 1),
+        };
+
+        if next_y <= 0 || next_y >= self.height - 1 {
             self.change_at_wall();
         }
-        else if (self.ball.x == 0 && i16::abs(self.ball.y - self.player1) <= PLAYER_SIZE) ||
-                (self.ball.x == self.width && i16::abs(self.ball.y - self.player2) <= PLAYER_SIZE){
 
+        if (next_x == 0 && i16::abs(next_y - self.player1) <= PLAYER_SIZE) ||
+            (next_x == self.width - 1 && i16::abs(next_y - self.player2) <= PLAYER_SIZE) {
             self.change_at_player();
         }
-        else if self.ball.x == 0 && i16::abs(self.ball.y - self.player1) > PLAYER_SIZE {
-            self.score(PlayerTurn::Player2)
+
+        if next_x < 0 {
+            self.score(PlayerTurn::Player2);
+            self.spawn_ball();
+            return;
+        } else if next_x > self.width {
+            self.score(PlayerTurn::Player1);
+            self.spawn_ball();
+            return;
         }
-        else if self.ball.x == self.width && i16::abs(self.ball.y - self.player2) > PLAYER_SIZE {
-            self.score(PlayerTurn::Player1)
-        }
+
+        self.ball = Point { x: next_x, y: next_y };
     }
+
 }
