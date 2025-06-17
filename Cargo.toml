@@ -23,5 +23,5 @@ itoa = "1.0"
 
 
 [[bin]]
-name = "blinky"
-path = "blinky.rs"
+name = "main"
+path = "main.rs"

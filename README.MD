@@ -1,0 +1,1 @@
+# To run just use `cargo run --bin main --release`

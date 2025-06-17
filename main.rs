@@ -38,7 +38,7 @@ use hal::pac;
 use embedded_hal::adc::OneShot;
 
 // Some traits we need
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use rp2040_hal::clocks::Clock;
 
 use embedded_graphics::prelude::*;
@@ -120,6 +120,8 @@ unsafe fn main() -> ! {
     MUX_SELECT_0 = Some(pins.gpio10.into_push_pull_output());
     MUX_SELECT_1 = Some(pins.gpio11.into_push_pull_output());
     MUX_JOY_ADC = Some(pins.gpio26.into_floating_input());
+    let mut joy_button1 = pins.gpio8.into_pull_up_input();
+    let mut joy_button2 = pins.gpio9.into_pull_up_input();
     //lcd pins, spi communication, reset and light pins
     let _spi_sclk = pins.gpio6.into_mode::<hal::gpio::FunctionSpi>();
     let _spi_mosi = pins.gpio7.into_mode::<hal::gpio::FunctionSpi>();
@@ -132,7 +134,7 @@ unsafe fn main() -> ! {
     let spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        RateExtU32::Hz(16_000_000u32),
+        RateExtU32::Hz(32_000_000u32),
         &embedded_hal::spi::MODE_0,
     );
 
@@ -141,9 +143,15 @@ unsafe fn main() -> ! {
     disp.init(&mut delay).unwrap();
     disp.set_orientation(&Orientation::Landscape).unwrap();
     disp.clear(Rgb565::BLACK).unwrap();
-    //disp.set_offset(0, 25);
 
     let mut menu_change: bool = true;
+    let mut score_changed: bool = true;
+    let mut current_p1_score: u8 = 0;
+    let mut current_p2_score: u8 = 0;
+    let mut prev_player1: u16 = 128/2;
+    let mut prev_player2: u16 = 128/2;
+    let mut prev_ball: Point = Point::new(160/2, 128/2);
+
     let mut current_state: CurrentState = CurrentState::Menu;
     loop {
         match current_state {
@@ -177,13 +185,6 @@ unsafe fn main() -> ! {
                             .draw(&mut disp)
                             .unwrap();
 
-                        let mut buf = itoa::Buffer::new();
-                        let formatted = buf.format(joy_val);
-
-                        Text::new(formatted, Point::new(40, 90), style)
-                            .draw(&mut disp)
-                            .unwrap();
-
                         if selected_game == 0 {
                             Text::new("> Pong", Point::new(40, 50), style)
                                 .draw(&mut disp)
@@ -201,13 +202,14 @@ unsafe fn main() -> ! {
                         }
                         menu_change = false;
                     }
-                    let confirm_val = read_joy(JoyToPin::JoyX1);
-                    if confirm_val > JOY_UPPER_BOUND {
+                    let confirm_val = joy_button1.is_low().unwrap();
+                    if confirm_val {
                         if selected_game == 0 {
                             current_state = CurrentState::Pong(Pong::new(160, 128));
                         } else {
                             current_state = CurrentState::Snake;
                         }
+                        disp.clear(Rgb565::BLACK).unwrap();
                         break;
                     }
 
@@ -216,10 +218,38 @@ unsafe fn main() -> ! {
             }
 
             CurrentState::Pong(ref mut pong) => {
+                let mut next_state: Option<CurrentState> = None;
+
                 let paddle_style = PrimitiveStyle::with_fill(Rgb565::WHITE);
                 let ball_style = PrimitiveStyle::with_fill(Rgb565::RED);
+                let clear_style = PrimitiveStyle::with_fill(Rgb565::BLACK);
 
-                disp.clear(Rgb565::BLACK).unwrap();
+                //CLEANING PADDLES AND BALL OLD POSITIONS TO PREVENT FLICKERING
+                Rectangle::new(
+                    Point::new(0, prev_player1 as i32 - PLAYER_SIZE as i32),
+                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                )
+                    .into_styled(clear_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                Rectangle::new(
+                    Point::new(pong.width as i32 - 2, prev_player2 as i32 - PLAYER_SIZE as i32),
+                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                )
+                    .into_styled(clear_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                // Clear old ball
+                Rectangle::new(prev_ball, Size::new(2, 2))
+                    .into_styled(clear_style)
+                    .draw(&mut disp)
+                    .unwrap();
+
+                prev_player1 = pong.player1 as u16;
+                prev_player2 = pong.player2 as u16;
+                prev_ball = Point::new(pong.ball.x as i32, pong.ball.y as i32);
 
                 Rectangle::new(
                     Point::new(0, pong.player1 as i32 - PLAYER_SIZE as i32),
@@ -245,19 +275,34 @@ unsafe fn main() -> ! {
                     .draw(&mut disp)
                     .unwrap();
 
-                let mut buf1 = itoa::Buffer::new();
-                let mut buf2 = itoa::Buffer::new();
-                let p1_score = buf1.format(pong.player1_score);
-                let p2_score = buf2.format(pong.player2_score);
+                if score_changed {
+                    //CLEANING OLD SCORE WITH BLACK RECTANGLE
+                    let clear_rect_style = PrimitiveStyle::with_fill(Rgb565::BLACK);
+                    Rectangle::new(Point::new(70, 10), Size::new(15, 15))
+                        .into_styled(clear_rect_style)
+                        .draw(&mut disp)
+                        .unwrap();
+                    Rectangle::new(Point::new(90, 10), Size::new(15, 15))
+                        .into_styled(clear_rect_style)
+                        .draw(&mut disp)
+                        .unwrap();
 
-                let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
-                Text::new(p1_score, Point::new(20, 20), style)
-                    .draw(&mut disp)
-                    .unwrap();
+                    let mut buf1 = itoa::Buffer::new();
+                    let mut buf2 = itoa::Buffer::new();
+                    let p1_score = buf1.format(pong.player1_score);
+                    let p2_score = buf2.format(pong.player2_score);
 
-                Text::new(p2_score, Point::new(40, 20), style)
-                    .draw(&mut disp)
-                    .unwrap();
+                    let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+                    Text::new(p1_score, Point::new(70, 20), style)
+                        .draw(&mut disp)
+                        .unwrap();
+
+                    Text::new(p2_score, Point::new(90, 20), style)
+                        .draw(&mut disp)
+                        .unwrap();
+
+                    score_changed = false;
+                }
 
                 let p1_val = read_joy(JoyToPin::JoyY1);
                 let p2_val = read_joy(JoyToPin::JoyY2);
@@ -266,13 +311,24 @@ unsafe fn main() -> ! {
                 pong.move_player(PlayerTurn::Player2, p2_val as i16);
 
                 pong.update_ball();
+
+                if current_p1_score != pong.player1_score || current_p2_score != pong.player2_score {
+                    current_p1_score = pong.player1_score;
+                    current_p2_score = pong.player2_score;
+
+                    score_changed = true;
+                }
+
                 pong.check_for_win();
 
                 if !pong.is_running {
-                    current_state = CurrentState::Menu;
+                    next_state = Some(CurrentState::Menu);
                 }
 
-                //delay.delay_ms(1);
+                if let Some(state) = next_state {
+                    current_state = state;
+                }
+                delay.delay_ms(20);
             }
 
             CurrentState::Snake => {
