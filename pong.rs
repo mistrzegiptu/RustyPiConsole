@@ -2,6 +2,7 @@ use ::{JOY_LOWER_BOUND, JOY_UPPER_BOUND};
 
 pub const PLAYER_SIZE: i16 = 4;
 const MAX_SCORE: u8 = 11;
+const PLAYER_MOVE_DELTA: i16 = 2;
 
 pub enum PongDirection {
     UpperRight,
@@ -83,7 +84,7 @@ impl Pong {
     }
 
     pub fn move_player(&mut self, which_player: PlayerTurn, value: i16) {
-        let dy = if value > JOY_UPPER_BOUND as i16 { 1 } else if value < JOY_LOWER_BOUND as i16 { -1 } else { 0 };
+        let dy = if value > JOY_UPPER_BOUND as i16 { PLAYER_MOVE_DELTA } else if value < JOY_LOWER_BOUND as i16 { -PLAYER_MOVE_DELTA } else { 0 };
 
         match which_player {
             PlayerTurn::Player1 => {
