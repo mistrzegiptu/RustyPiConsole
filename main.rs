@@ -1,4 +1,4 @@
-//! # GPIO 'Blinky' Example
+// ! # GPIO 'Blinky' Example
 //!
 //! This application demonstrates how to control a GPIO pin on the RP2040.
 //!
@@ -9,7 +9,10 @@
 #![no_std]
 #![no_main]
 
+// Remove or guard any test-only code with #[cfg(test)] to avoid requiring the test crate in no_std binaries.
+
 mod pong;
+mod snake;
 
 extern crate panic_halt;
 extern crate embedded_hal;
@@ -22,6 +25,7 @@ extern crate fugit;
 extern crate cortex_m;
 
 use cortex_m_rt::entry;
+use heapless::Vec;
 use core::fmt::Write;
 use core::pin::Pin;
 use cortex_m::interrupt::disable;
@@ -57,6 +61,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::draw_target::DrawTarget;
 use fugit::RateExtU32;
 use pong::{PlayerTurn, Pong, PLAYER_SIZE};
+use snake::{Snake,Direction};
 
 /// The linker will place this boot block at the start of our program image. We
 /// need this to help the ROM bootloader get our code up and running.
@@ -151,6 +156,8 @@ unsafe fn main() -> ! {
     let mut prev_player1: u16 = 128/2;
     let mut prev_player2: u16 = 128/2;
     let mut prev_ball: Point = Point::new(160/2, 128/2);
+    let mut prev_snake: Vec<Point,20480> = Vec::new();
+    let mut prev_food: Vec<Point,20480> = Vec::new();
 
     let mut current_state: CurrentState = CurrentState::Menu;
     loop {
@@ -207,7 +214,7 @@ unsafe fn main() -> ! {
                         if selected_game == 0 {
                             current_state = CurrentState::Pong(Pong::new(160, 128));
                         } else {
-                            current_state = CurrentState::Snake;
+                            current_state = CurrentState::Snake(Snake::new(160,128));
                         }
                         disp.clear(Rgb565::BLACK).unwrap();
                         break;
@@ -331,8 +338,111 @@ unsafe fn main() -> ! {
                 delay.delay_ms(20);
             }
 
-            CurrentState::Snake => {
-                //TODO
+            CurrentState::Snake(ref mut snake) => {
+                let mut next_state: Option<CurrentState> = None;
+
+                let snake_style = PrimitiveStyle::with_fill(Rgb565::GREEN);
+                let food_style = PrimitiveStyle::with_fill(Rgb565::RED);
+                let clear_style = PrimitiveStyle::with_fill(Rgb565::BLACK);
+
+                for segment in prev_snake.iter() {
+                    Rectangle::new(
+                        Point::new(segment.x as i32, segment.y as i32),
+                        Size::new(4,4)
+                    )
+                    .into_styled(clear_style)
+                    .draw(&mut disp)
+                    .unwrap();
+                }
+
+                for segment in prev_food.iter() {
+                    Rectangle::new(
+                        Point::new(segment.x as i32, segment.y as i32),
+                        Size::new(4,4)
+                    )
+                    .into_styled(clear_style)
+                    .draw(&mut disp)
+                    .unwrap();
+                }
+
+                let prev_snake = snake.body.clone();
+                let prev_food = snake.food.clone();
+
+                for segment in snake.body.iter() {
+                    Rectangle::new(
+                        Point::new(segment.x as i32, segment.y as i32),
+                        Size::new(4,4)
+                    )
+                    .into_styled(snake_style)
+                    .draw(&mut disp)
+                    .unwrap();
+                }
+
+                for segment in snake.food.iter() {
+                    Rectangle::new(
+                        Point::new(segment.x as i32, segment.y as i32),
+                        Size::new(4,4)
+                    )
+                    .into_styled(food_style)
+                    .draw(&mut disp)
+                    .unwrap();
+                }
+
+                if score_changed {
+                    //CLEANING OLD SCORE WITH BLACK RECTANGLE
+                    let clear_rect_style = PrimitiveStyle::with_fill(Rgb565::BLACK);
+                    Rectangle::new(Point::new(70, 10), Size::new(15, 15))
+                        .into_styled(clear_rect_style)
+                        .draw(&mut disp)
+                        .unwrap();
+                    Rectangle::new(Point::new(90, 10), Size::new(15, 15))
+                        .into_styled(clear_rect_style)
+                        .draw(&mut disp)
+                        .unwrap();
+
+                    let mut buf1 = itoa::Buffer::new();
+                    let p1_score = buf1.format(snake.score);
+
+                    let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+                    Text::new(p1_score, Point::new(70, 20), style)
+                        .draw(&mut disp)
+                        .unwrap();
+
+                    score_changed = false;
+                }
+
+                let player_xval = read_joy(JoyToPin::JoyY1);
+                let player_yval = read_joy(JoyToPin::JoyX1);
+
+                if player_xval > 0 {
+                    snake.change_direction(Direction::Right);
+                }
+                else if player_xval < 0 {
+                    snake.change_direction(Direction::Left);
+                }
+                else if player_yval > 0 {
+                    snake.change_direction(Direction::Up);
+                }
+                else if player_yval < 0 {
+                    snake.change_direction(Direction::Down);
+                }
+
+                snake.move_snake();
+
+                if snake.food.contains(&snake.head_position) {
+                    snake.eat();
+                    snake.random_food_position();
+                    score_changed = true;
+                }
+
+                if !snake.alive {
+                    next_state = Some(CurrentState::Menu)
+                }
+
+                if let Some(state) = next_state {
+                    current_state = state;
+                }
+                delay.delay_ms(50);
             }
         }
     }
@@ -341,7 +451,7 @@ unsafe fn main() -> ! {
 pub enum CurrentState {
     Menu,
     Pong(Pong),
-    Snake
+    Snake(Snake),
 }
 
 pub enum JoyToPin {
