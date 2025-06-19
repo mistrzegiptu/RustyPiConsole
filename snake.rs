@@ -1,4 +1,4 @@
-use rand::Rng;
+// use rand::Rng;
 use heapless::Vec;
 
 pub const SNAKE_INITIAL_LENGTH: usize = 3;

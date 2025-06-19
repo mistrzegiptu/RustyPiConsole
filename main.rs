@@ -23,7 +23,7 @@ extern crate cortex_m_rt;
 extern crate st7735_lcd;
 extern crate fugit;
 extern crate cortex_m;
-
+extern crate heapless;
 use cortex_m_rt::entry;
 use heapless::Vec;
 use core::fmt::Write;
