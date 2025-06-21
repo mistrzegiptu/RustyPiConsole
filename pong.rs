@@ -1,3 +1,4 @@
+use oorandom::Rand32;
 use ::{JOY_LOWER_BOUND, JOY_UPPER_BOUND};
 
 pub const PLAYER_SIZE: i16 = 4;
@@ -30,7 +31,8 @@ pub struct Pong {
     pub player2: i16,
     pub player1_score: u8,
     pub player2_score: u8,
-    pub is_running: bool
+    pub is_running: bool,
+    pub rng: Rand32
 }
 
 impl Pong {
@@ -44,15 +46,17 @@ impl Pong {
             player2: height / 2,
             player1_score: 0,
             player2_score: 0,
-            is_running: true
+            is_running: true,
+            rng: Rand32::new(2137)
         };
-        pong.set_ball_direction(Self::random_direction());
+        let direction = pong.random_direction();
+        pong.set_ball_direction(direction);
         pong
     }
 
-    pub fn random_direction() -> u8 {
-        //1 + (rand::random::<u8>() % 4) TODO: Make rand work
-        1
+    pub fn random_direction(&mut self) -> u8 {
+        self.rng.rand_range(0..4) as u8
+        //1
     }
 
     pub fn set_ball_direction(&mut self, direction: u8) {
@@ -110,7 +114,8 @@ impl Pong {
     }
 
     pub fn spawn_ball(&mut self) {
-        Self::random_direction();
+        let direction = self.random_direction();
+        self.set_ball_direction(direction);
         self.ball = Point { x: self.width / 2, y: self.height / 2 };
     }
 

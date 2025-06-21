@@ -1,8 +1,7 @@
-// use rand::Rng;
 use heapless::Vec;
 
 pub const SNAKE_INITIAL_LENGTH: usize = 3;
-pub const MAX_VEC_SIZE: usize = 20480;
+pub const MAX_VEC_SIZE: usize = 100;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Direction {
@@ -122,18 +121,19 @@ impl Snake {
 
     //Losowanie pozycji jedzenia, napisać jakiś test
     pub fn random_food_position(&mut self) {
-        // let mut rng = rand::thread_rng();
 
-        // loop {
-        //     let x = rng.gen_range(0..self.width);
-        //     let y = rng.gen_range(0..self.height);
-        //     let point = Point { x, y };
+        let mut rng = oorandom::Rand32::new(0);
 
-        //     if !self.body.contains(&point) && !self.food.contains(&point) {
-        //         self.food.push(point);
-        //         break;
-        //     }
-        // }
+        loop {
+             let x = rng.rand_range(0..self.width as u32) as i16;
+             let y = rng.rand_range(0..self.height as u32) as i16;
+             let point = Point { x, y};
+
+             if !self.body.contains(&point) && !self.food.contains(&point) {
+                 self.food.push(point);
+                 break;
+             }
+        }
 
         let p1 = Point { x: 3, y: 0 };
         let p2 = Point { x: 1, y: 1 };

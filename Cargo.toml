@@ -19,7 +19,7 @@ embedded-time = "0.12.0"
 embedded-graphics = "0.7.0"
 fugit = "0.3"
 itoa = "1.0"
-#rand = "0.9.1"
+oorandom = { version = "11.1.3", default-features = false }
 heapless = "0.8"
 
 

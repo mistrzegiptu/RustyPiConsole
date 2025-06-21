@@ -24,6 +24,8 @@ extern crate st7735_lcd;
 extern crate fugit;
 extern crate cortex_m;
 extern crate heapless;
+extern crate oorandom;
+
 use cortex_m_rt::entry;
 use heapless::Vec;
 use core::fmt::Write;
@@ -156,8 +158,8 @@ unsafe fn main() -> ! {
     let mut prev_player1: u16 = 128/2;
     let mut prev_player2: u16 = 128/2;
     let mut prev_ball: Point = Point::new(160/2, 128/2);
-    let mut prev_snake: Vec<Point,20480> = Vec::new();
-    let mut prev_food: Vec<Point,20480> = Vec::new();
+    let mut prev_snake: Vec<Point,100> = Vec::new();
+    let mut prev_food: Vec<Point,100> = Vec::new();
 
     let mut current_state: CurrentState = CurrentState::Menu;
     loop {
@@ -234,7 +236,7 @@ unsafe fn main() -> ! {
                 //CLEANING PADDLES AND BALL OLD POSITIONS TO PREVENT FLICKERING
                 Rectangle::new(
                     Point::new(0, prev_player1 as i32 - PLAYER_SIZE as i32),
-                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                    Size::new(1, (PLAYER_SIZE * 2) as u32),
                 )
                     .into_styled(clear_style)
                     .draw(&mut disp)
@@ -242,7 +244,7 @@ unsafe fn main() -> ! {
 
                 Rectangle::new(
                     Point::new(pong.width as i32 - 2, prev_player2 as i32 - PLAYER_SIZE as i32),
-                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                    Size::new(1, (PLAYER_SIZE * 2) as u32),
                 )
                     .into_styled(clear_style)
                     .draw(&mut disp)
@@ -260,7 +262,7 @@ unsafe fn main() -> ! {
 
                 Rectangle::new(
                     Point::new(0, pong.player1 as i32 - PLAYER_SIZE as i32),
-                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                    Size::new(1, (PLAYER_SIZE * 2) as u32),
                 )
                     .into_styled(paddle_style)
                     .draw(&mut disp)
@@ -268,7 +270,7 @@ unsafe fn main() -> ! {
 
                 Rectangle::new(
                     Point::new(pong.width as i32 - 2, pong.player2 as i32 - PLAYER_SIZE as i32),
-                    Size::new(2, (PLAYER_SIZE * 2) as u32),
+                    Size::new(1, (PLAYER_SIZE * 2) as u32),
                 )
                     .into_styled(paddle_style)
                     .draw(&mut disp)
@@ -348,7 +350,7 @@ unsafe fn main() -> ! {
                 for segment in prev_snake.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
-                        Size::new(4,4)
+                        Size::new(1,1)
                     )
                     .into_styled(clear_style)
                     .draw(&mut disp)
@@ -358,7 +360,7 @@ unsafe fn main() -> ! {
                 for segment in prev_food.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
-                        Size::new(4,4)
+                        Size::new(1,1)
                     )
                     .into_styled(clear_style)
                     .draw(&mut disp)
@@ -371,7 +373,7 @@ unsafe fn main() -> ! {
                 for segment in snake.body.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
-                        Size::new(4,4)
+                        Size::new(1,1)
                     )
                     .into_styled(snake_style)
                     .draw(&mut disp)
@@ -381,7 +383,7 @@ unsafe fn main() -> ! {
                 for segment in snake.food.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
-                        Size::new(4,4)
+                        Size::new(1,1)
                     )
                     .into_styled(food_style)
                     .draw(&mut disp)
@@ -414,16 +416,16 @@ unsafe fn main() -> ! {
                 let player_xval = read_joy(JoyToPin::JoyY1);
                 let player_yval = read_joy(JoyToPin::JoyX1);
 
-                if player_xval > 0 {
-                    snake.change_direction(Direction::Right);
-                }
-                else if player_xval < 0 {
+                if player_xval > JOY_UPPER_BOUND {
                     snake.change_direction(Direction::Left);
                 }
-                else if player_yval > 0 {
+                else if player_xval < JOY_LOWER_BOUND {
+                    snake.change_direction(Direction::Right);
+                }
+                else if player_yval > JOY_UPPER_BOUND {
                     snake.change_direction(Direction::Up);
                 }
-                else if player_yval < 0 {
+                else if player_yval < JOY_LOWER_BOUND {
                     snake.change_direction(Direction::Down);
                 }
 
