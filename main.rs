@@ -347,6 +347,9 @@ unsafe fn main() -> ! {
                 let food_style = PrimitiveStyle::with_fill(Rgb565::RED);
                 let clear_style = PrimitiveStyle::with_fill(Rgb565::BLACK);
 
+                let prev_snake = snake.body.clone();
+                let prev_food = snake.food.clone();
+
                 for segment in prev_snake.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
@@ -367,17 +370,39 @@ unsafe fn main() -> ! {
                     .unwrap();
                 }
 
-                let prev_snake = snake.body.clone();
-                let prev_food = snake.food.clone();
+                let player_xval = read_joy(JoyToPin::JoyY1);
+                let player_yval = read_joy(JoyToPin::JoyX1);
+
+                if player_xval > JOY_UPPER_BOUND {
+                    snake.change_direction(Direction::Left);
+                }
+                else if player_xval < JOY_LOWER_BOUND {
+                    snake.change_direction(Direction::Right);
+                }
+                else if player_yval > JOY_UPPER_BOUND {
+                    snake.change_direction(Direction::Up);
+                }
+                else if player_yval < JOY_LOWER_BOUND {
+                    snake.change_direction(Direction::Down);
+                }
+
+                snake.move_snake();
+                snake.random_food_position();
+
+                if snake.food.contains(&snake.head_position) {
+                    snake.eat();
+                    snake.random_food_position();
+                    score_changed = true;
+                }
 
                 for segment in snake.body.iter() {
                     Rectangle::new(
                         Point::new(segment.x as i32, segment.y as i32),
                         Size::new(1,1)
                     )
-                    .into_styled(snake_style)
-                    .draw(&mut disp)
-                    .unwrap();
+                        .into_styled(snake_style)
+                        .draw(&mut disp)
+                        .unwrap();
                 }
 
                 for segment in snake.food.iter() {
@@ -385,9 +410,9 @@ unsafe fn main() -> ! {
                         Point::new(segment.x as i32, segment.y as i32),
                         Size::new(1,1)
                     )
-                    .into_styled(food_style)
-                    .draw(&mut disp)
-                    .unwrap();
+                        .into_styled(food_style)
+                        .draw(&mut disp)
+                        .unwrap();
                 }
 
                 if score_changed {
@@ -411,30 +436,6 @@ unsafe fn main() -> ! {
                         .unwrap();
 
                     score_changed = false;
-                }
-
-                let player_xval = read_joy(JoyToPin::JoyY1);
-                let player_yval = read_joy(JoyToPin::JoyX1);
-
-                if player_xval > JOY_UPPER_BOUND {
-                    snake.change_direction(Direction::Left);
-                }
-                else if player_xval < JOY_LOWER_BOUND {
-                    snake.change_direction(Direction::Right);
-                }
-                else if player_yval > JOY_UPPER_BOUND {
-                    snake.change_direction(Direction::Up);
-                }
-                else if player_yval < JOY_LOWER_BOUND {
-                    snake.change_direction(Direction::Down);
-                }
-
-                snake.move_snake();
-
-                if snake.food.contains(&snake.head_position) {
-                    snake.eat();
-                    snake.random_food_position();
-                    score_changed = true;
                 }
 
                 if !snake.alive {
