@@ -27,7 +27,7 @@ extern crate heapless;
 extern crate oorandom;
 
 use cortex_m_rt::entry;
-use heapless::Vec;
+use heapless::{String, Vec};
 use core::fmt::Write;
 use core::pin::Pin;
 use cortex_m::interrupt::disable;
@@ -95,7 +95,7 @@ unsafe fn main() -> ! {
     let core = pac::CorePeripherals::take().unwrap();
 
     // Set up the watchdog driver - needed by the clock setup code
-    let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
+    let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);;
 
     // Configure the clocks
     let clocks = hal::clocks::init_clocks_and_plls(
@@ -122,6 +122,7 @@ unsafe fn main() -> ! {
         sio.gpio_bank0,
         &mut pac.RESETS,
     );
+
     //adc pin for joysticks, since pico has only 3 adc we need to use muxer
     ADC = Some(hal::Adc::new(pac.ADC, &mut pac.RESETS));
     MUX_SELECT_0 = Some(pins.gpio10.into_push_pull_output());
@@ -129,6 +130,7 @@ unsafe fn main() -> ! {
     MUX_JOY_ADC = Some(pins.gpio26.into_floating_input());
     let mut joy_button1 = pins.gpio8.into_pull_up_input();
     let mut joy_button2 = pins.gpio9.into_pull_up_input();
+
     //lcd pins, spi communication, reset and light pins
     let _spi_sclk = pins.gpio6.into_mode::<hal::gpio::FunctionSpi>();
     let _spi_mosi = pins.gpio7.into_mode::<hal::gpio::FunctionSpi>();
@@ -213,10 +215,12 @@ unsafe fn main() -> ! {
                     }
                     let confirm_val = joy_button1.is_low().unwrap();
                     if confirm_val {
+                        let seed: u64 = read_joy(JoyToPin::JoyX1) as u64;
                         if selected_game == 0 {
-                            current_state = CurrentState::Pong(Pong::new(160, 128));
+                            current_state = CurrentState::Pong(Pong::new(160, 128, seed));
                         } else {
-                            current_state = CurrentState::Snake(Snake::new(160,128));
+                            current_state = CurrentState::Snake(Snake::new(160,128, seed
+                            ));
                         }
                         disp.clear(Rgb565::BLACK).unwrap();
                         break;
@@ -370,14 +374,14 @@ unsafe fn main() -> ! {
                     .unwrap();
                 }
 
-                let player_xval = read_joy(JoyToPin::JoyY1);
-                let player_yval = read_joy(JoyToPin::JoyX1);
+                let player_xval = read_joy(JoyToPin::JoyX1);
+                let player_yval = read_joy(JoyToPin::JoyY1);
 
                 if player_xval > JOY_UPPER_BOUND {
-                    snake.change_direction(Direction::Left);
+                    snake.change_direction(Direction::Right);
                 }
                 else if player_xval < JOY_LOWER_BOUND {
-                    snake.change_direction(Direction::Right);
+                    snake.change_direction(Direction::Left);
                 }
                 else if player_yval > JOY_UPPER_BOUND {
                     snake.change_direction(Direction::Up);

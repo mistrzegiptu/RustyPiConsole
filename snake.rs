@@ -1,4 +1,5 @@
 use heapless::Vec;
+use oorandom::Rand32;
 
 pub const SNAKE_INITIAL_LENGTH: usize = 3;
 pub const MAX_VEC_SIZE: usize = 100;
@@ -29,11 +30,12 @@ pub struct Snake {
     pub ate: bool,
     pub food: Vec<Point,MAX_VEC_SIZE>,
     pub won: bool,
+    pub rng: Rand32
 }
 
 
 impl Snake {
-    pub fn new(width: i16, height: i16) -> Self {
+    pub fn new(width: i16, height: i16, seed: u64) -> Self {
         let mut body = Vec::new();
 
         let mid_x = width/2;
@@ -55,6 +57,7 @@ impl Snake {
             ate: false,
             food: Vec::new(),
             won: false,
+            rng: Rand32::new(seed)
         }
     }
 
@@ -122,11 +125,9 @@ impl Snake {
     //Losowanie pozycji jedzenia, napisać jakiś test
     pub fn random_food_position(&mut self) {
 
-        let mut rng = oorandom::Rand32::new(0);
-
         loop {
-             let x = rng.rand_range(0..self.width as u32) as i16;
-             let y = rng.rand_range(0..self.height as u32) as i16;
+             let x = self.rng.rand_range(0..self.width as u32) as i16;
+             let y = self.rng.rand_range(0..self.height as u32) as i16;
              let point = Point { x, y};
 
              if !self.body.contains(&point) && !self.food.contains(&point) {

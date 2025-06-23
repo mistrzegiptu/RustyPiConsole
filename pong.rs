@@ -36,7 +36,7 @@ pub struct Pong {
 }
 
 impl Pong {
-    pub fn new(width: i16, height: i16) -> Self {
+    pub fn new(width: i16, height: i16, seed: u64) -> Self {
         let mut pong = Pong{
             width,
             height,
@@ -47,7 +47,7 @@ impl Pong {
             player1_score: 0,
             player2_score: 0,
             is_running: true,
-            rng: Rand32::new(2137)
+            rng: Rand32::new(seed)
         };
         let direction = pong.random_direction();
         pong.set_ball_direction(direction);
